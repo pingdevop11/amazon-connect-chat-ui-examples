@@ -1,0 +1,665 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "Customer chat solution for Amazon Connect: - This solution creates an API Gateway method that invokes a Lambda function to start a chat via Amazon Connect Service StartChatContact and returns the result.\n",
+    "Mappings": {
+        "FunctionMap": {
+            "Configuration": {
+                "S3Bucket": [
+                    {
+                        "Ref": "S3BucketName"
+                    }
+                ],
+                "S3Key": "deployment/",
+                "SolutionID": "AC0002"
+            }
+        }
+    },
+    "Parameters": {
+        "Client": {
+            "Type": "String",
+            "Default": "LiverPool",
+            "Description": "Enter client name. It will be used as a Tag"
+
+        },
+        "DeploymentType": {
+            "Type": "String",
+            "Default": "prod",
+            "Description": "Enter DeploymentType. it will be used in tagging",
+            "AllowedValues": [
+                "dev",
+                "pre-prod",
+                "prod"
+            ]            
+
+        },        
+        "contactFlowId": {
+            "Type": "String",
+            "Default": "12345678-1234-1234-1234-123456789012",
+            "Description": "The contact flow id that the customer will interact with while chatting",
+            "AllowedPattern": "\\w{8}-\\w{4}-\\w{4}-\\w{4}-\\w{12}"
+        },
+        "S3BucketName": {
+            "Type": "String",
+            "Default": "start-chat-contact-api-cfn",
+            "Description": "Enter the S3 Bucket Name for SDK Layer"
+
+        },
+        "NodejsRruntimes": {
+            "Type": "String",
+            "Default": "nodejs14.x",
+            "Description": "Select the Node.js Rruntimes for Lambda ",
+            "AllowedValues": [
+                "nodejs14.x",
+                "nodejs12.x",
+                "nodejs10.x"
+            ]            
+
+        },                
+        "instanceId": {
+            "Type": "String",
+            "Default": "12345678-1234-1234-1234-123456789012",
+            "Description": "The instance id of the Amazon Connect instance that the customer will interact with while chatting",
+            "AllowedPattern": "\\w{8}-\\w{4}-\\w{4}-\\w{4}-\\w{12}"
+        },
+        "APIStageName": {
+            "Type": "String",
+            "Default": "prod",
+            "Description": "Please select your Api gateway stage",
+            "AllowedValues": [
+                "dev",
+                "pre-prod",
+                "prod"
+            ]
+        },    
+        
+        "allowAnonymousUsageMetrics": {
+            "Type": "String",
+            "Default": "Yes",
+            "AllowedValues": [
+                "Yes",
+                "No"
+            ],
+            "Description": "Send usage metrics about this CloudFormation stack to AWS"
+        }
+    },
+    "Conditions": {
+        "AnonymousUsageMetrics": {
+            "Fn::Equals": [
+                {
+                    "Ref": "allowAnonymousUsageMetrics"
+                },
+                "Yes"
+            ]
+        }
+    },
+
+    "Resources": {
+        "ChatSDKLayer": {
+            "Type": "AWS::Lambda::LayerVersion",
+            "Properties": {
+                "CompatibleRuntimes": [
+                    {
+                        "Ref": "NodejsRruntimes"
+                    }
+                ],
+                "Content": {
+                    "S3Bucket": {
+                        "Fn::Join": [
+                            ".",
+                            [
+                                {
+                                    "Ref": "AWS::Region"
+                                },
+                                {
+                                    "Fn::FindInMap": [
+                                        "FunctionMap",
+                                        "Configuration",
+                                        "S3Bucket"
+                                    ]
+                                }
+                            ]
+                        ]
+                    },
+                    "S3Key": {
+                        "Fn::Join": [
+                            "",
+                            [
+                                {
+                                    "Fn::FindInMap": [
+                                        "FunctionMap",
+                                        "Configuration",
+                                        "S3Key"
+                                    ]
+                                },
+                                "ChatSDK.zip"
+                            ]
+                        ]
+                    }
+                },
+                "Description": "The AWS SDK including Amazon Connect Chat APIs.",
+                "LayerName": { "Fn::Join" : [ "_", [ "ADOP-F", "!Sub '${AWS::StackName}'" , "ChatSDKLayer" ] ] }                
+            }
+        },
+        "StartChatLambda": {
+            "Type": "AWS::Lambda::Function",
+            "Properties": {
+                "Description": "AWS Lambda Function to initiate the chat with the end user",
+                "FunctionName": { "Fn::Join" : [ "_", [ "ADOP-F", "!Sub '${AWS::StackName}'" , "StartChatLambda" ] ] }, 
+                "Handler": "startChatContact.handler",
+                "Role": {
+                    "Fn::GetAtt": [
+                        "StartChatLambdaExecutionRole",
+                        "Arn"
+                    ]
+                },
+                "Runtime": "nodejs10.x",
+                "MemorySize": 128,
+                "Timeout": 30,
+                "Layers": [
+                    {
+                        "Ref": "ChatSDKLayer"
+                    }
+                ],
+                "Environment": {
+                    "Variables": {
+                        "INSTANCE_ID": {
+                            "Ref": "instanceId"
+                        },
+                        "CONTACT_FLOW_ID": {
+                            "Ref": "contactFlowId"
+                        },
+                        "SOLUTION_ID": {
+                            "Fn::FindInMap": [
+                                "FunctionMap",
+                                "Configuration",
+                                "SolutionID"
+                            ]
+                        }
+                    }
+                },
+                "Code": {
+                    "S3Bucket": {
+                        "Fn::Join": [
+                            ".",
+                            [
+                                {
+                                    "Ref": "AWS::Region"
+                                },
+                                {
+                                    "Fn::FindInMap": [
+                                        "FunctionMap",
+                                        "Configuration",
+                                        "S3Bucket"
+                                    ]
+                                }
+                            ]
+                        ]
+                    },
+                    "S3Key": {
+                        "Fn::Join": [
+                            "",
+                            [
+                                {
+                                    "Fn::FindInMap": [
+                                        "FunctionMap",
+                                        "Configuration",
+                                        "S3Key"
+                                    ]
+                                },
+                                "start-chat-contact.zip"
+                            ]
+                        ]
+                    }
+                }
+            }
+        },
+        "StartChatLambdaExecutionRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": [
+                                    "lambda.amazonaws.com"
+                                ]
+                            },
+                            "Action": [
+                                "sts:AssumeRole"
+                            ]
+                        }
+                    ]
+                },
+                "Path": "/",
+                "RoleName": { "Fn::Join" : [ "_", [ "ADOP-F", "!Sub '${AWS::StackName}'" , "StartChatLambdaExecutionRole" ] ] }, 
+                "Policies": [
+                    {
+                        "PolicyName": "start-chat-contact-execution-policy",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "logs:CreateLogGroup",
+                                        "logs:CreateLogStream",
+                                        "logs:PutLogEvents"
+                                    ],
+                                    "Resource": [
+                                        {
+                                            "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "connect:StartChatContact"
+                                    ],
+                                    "Resource": [
+                                        {
+                                            "Fn::Sub": "arn:${AWS::Partition}:connect:${AWS::Region}:${AWS::AccountId}:instance/${instanceId}"
+                                        },
+                                        {
+                                            "Fn::Sub": "arn:${AWS::Partition}:connect:${AWS::Region}:${AWS::AccountId}:instance/${instanceId}/*"
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                ],
+                "Tags": [
+					          { "Key": "Name", "Value": {"Fn::Sub": "${AWS::StackName}"}},
+                    {
+                        "Key": "RotationStrategy",
+                        "Value": "6Months"
+                    },
+                    {
+                        "Key": "Client",
+                        "Value": {"Ref": "ClientName"}
+                    },
+                    {
+                        "Key": "DeploymentType",
+                        "Value": {"Ref": "DeploymentType"}
+                    },
+                    {
+                        "Key": "Environment",
+                        "Value": "prod"
+                    }
+                ]   
+            }
+        },
+        "ApiGatewayRestAPI": {
+            "Type": "AWS::ApiGateway::RestApi",
+            "Properties": {
+                "Name": { "Fn::Join" : [ "_", [ "ADOP-F", "!Sub '${AWS::StackName}'" , "StartChatLambda" ] ] }, 
+                "Description": "API to initiate chat with Amazon Connect"
+            }
+        },
+        "LambdaApiGatewayInvokePermission": {
+            "Type": "AWS::Lambda::Permission",
+            "Properties": {
+                "Action": "lambda:InvokeFunction",
+                "FunctionName": {
+                    "Fn::GetAtt": [
+                        "StartChatLambda",
+                        "Arn"
+                    ]
+                },
+                "Principal": "apigateway.amazonaws.com",
+                "SourceArn": {
+                    "Fn::Sub": "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGatewayRestAPI}/*"
+                }
+            }
+        },
+        "ApiGatewayDeployment": {
+            "Type": "AWS::ApiGateway::Deployment",
+            "DependsOn": [
+                "ApiGatewayRootMethod"
+            ],
+            "Properties": {
+                "RestApiId": {
+                    "Ref": "ApiGatewayRestAPI"
+                },
+                "StageName": [
+                    {
+                        "Ref": "APIStageName"
+                    }
+                ]
+            }
+        },
+        "ApiGatewayRootMethod": {
+            "Type": "AWS::ApiGateway::Method",
+            "DependsOn": "LambdaApiGatewayInvokePermission",
+            "Properties": {
+                "AuthorizationType": "NONE",
+                "OperationName": { "Fn::Join" : [ "_", [ "ADOP-F", "!Sub '${AWS::StackName}'" , "ApiGatewayRootMethod" ] ] }, 
+                "HttpMethod": "POST",
+                "Integration": {
+                    "IntegrationHttpMethod": "POST",
+                    "Type": "AWS_PROXY",
+                    "Uri": {
+                        "Fn::Sub": [
+                            "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${lambdaArn}/invocations",
+                            {
+                                "lambdaArn": {
+                                    "Fn::GetAtt": [
+                                        "StartChatLambda",
+                                        "Arn"
+                                    ]
+                                }
+                            }
+                        ]
+                    },
+                    "PassthroughBehavior": "WHEN_NO_MATCH"
+                },
+                "ResourceId": {
+                    "Fn::GetAtt": [
+                        "ApiGatewayRestAPI",
+                        "RootResourceId"
+                    ]
+                },
+                "RestApiId": {
+                    "Ref": "ApiGatewayRestAPI"
+                },
+                "MethodResponses": [
+                    {
+                        "StatusCode": "200",
+                        "ResponseParameters": {
+                            "method.response.header.Access-Control-Allow-Origin": true
+                        },
+                        "ResponseModels": {
+                            "application/json": "Empty"
+                        }
+                    },
+                    {
+                        "StatusCode": "500",
+                        "ResponseParameters": {
+                            "method.response.header.Access-Control-Allow-Origin": true
+                        },
+                        "ResponseModels": {
+                            "application/json": "Empty"
+                        }
+                    }
+                ]
+            }
+        },
+        "ApiGatewayOptionsMethod": {
+            "Type": "AWS::ApiGateway::Method",
+            "Properties": {
+                "ResourceId": {
+                    "Fn::GetAtt": [
+                        "ApiGatewayRestAPI",
+                        "RootResourceId"
+                    ]
+                },
+                "RestApiId": {
+                    "Ref": "ApiGatewayRestAPI"
+                },
+                "AuthorizationType": "NONE",
+                "OperationName": { "Fn::Join" : [ "_", [ "ADOP-F", "!Sub '${AWS::StackName}'" , "ApiGatewayOptionsMethod" ] ] },
+                "HttpMethod": "OPTIONS",
+                "Integration": {
+                    "Type": "MOCK",
+                    "IntegrationResponses": [
+                        {
+                            "ResponseParameters": {
+                                "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
+                                "method.response.header.Access-Control-Allow-Methods": "'POST,OPTIONS'",
+                                "method.response.header.Access-Control-Allow-Origin": "'*'"
+                            },
+                            "ResponseTemplates": {
+                                "application/json": ""
+                            },
+                            "StatusCode": "200"
+                        }
+                    ],
+                    "PassthroughBehavior": "NEVER",
+                    "RequestTemplates": {
+                        "application/json": "{\"statusCode\": 200}"
+                    }
+                },
+                "MethodResponses": [
+                    {
+                        "ResponseModels": {
+                            "application/json": "Empty"
+                        },
+                        "ResponseParameters": {
+                            "method.response.header.Access-Control-Allow-Headers": true,
+                            "method.response.header.Access-Control-Allow-Methods": true,
+                            "method.response.header.Access-Control-Allow-Origin": true
+                        },
+                        "StatusCode": "200"
+                    }
+                ]
+            }
+        },
+        "CustomResourceHelper": {
+            "Type": "AWS::Lambda::Function",
+            "Properties": {
+                "Code": {
+                    "S3Bucket": {
+                        "Fn::Join": [
+                            ".",
+                            [
+                                {
+                                    "Ref": "AWS::Region"
+                                },
+                                {
+                                    "Fn::FindInMap": [
+                                        "FunctionMap",
+                                        "Configuration",
+                                        "S3Bucket"
+                                    ]
+                                }
+                            ]
+                        ]
+                    },
+                    "S3Key": {
+                        "Fn::Join": [
+                            "",
+                            [
+                                {
+                                    "Fn::FindInMap": [
+                                        "FunctionMap",
+                                        "Configuration",
+                                        "S3Key"
+                                    ]
+                                },
+                                "custom-resource-helper.zip"
+                            ]
+                        ]
+                    }
+                },
+                "Description": "Solution Accelerator for Amazon Connect customer side Chat",
+                "Handler": "customResourceHelper.handler",
+                "MemorySize": 256,
+                "Role": {
+                    "Fn::GetAtt": [
+                        "CustomResourceHelperIamRole",
+                        "Arn"
+                    ]
+                },
+                "Runtime": "nodejs10.x",
+                "Timeout": 300
+            }
+        },
+        "CustomResourceHelperIamRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": [
+                                    "lambda.amazonaws.com"
+                                ]
+                            },
+                            "Action": [
+                                "sts:AssumeRole"
+                            ]
+                        }
+                    ]
+                },
+                "Path": "/",
+                "Policies": [
+                    {
+                        "PolicyName": "connect-chat-resource-helper",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "logs:CreateLogGroup",
+                                        "logs:CreateLogStream",
+                                        "logs:PutLogEvents"
+                                    ],
+                                    "Resource": [
+                                        {
+                                            "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "s3:GetObject"
+                                    ],
+                                    "Resource": [
+                                        {
+                                            "Fn::Join": [
+                                                "",
+                                                [
+                                                    "arn:",
+                                                    {
+                                                        "Ref": "AWS::Partition"
+                                                    },
+                                                    ":s3:::",
+                                                    {
+                                                        "Ref": "AWS::Region"
+                                                    },
+                                                    ".",
+                                                    {
+                                                        "Fn::FindInMap": [
+                                                            "FunctionMap",
+                                                            "Configuration",
+                                                            "S3Bucket"
+                                                        ]
+                                                    },
+                                                    "/*"
+                                                ]
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                ],
+                "Tags": [
+					          { "Key": "Name", "Value": {"Fn::Sub": "${AWS::StackName}"}},
+                    {
+                        "Key": "RotationStrategy",
+                        "Value": "6Months"
+                    },
+                    {
+                        "Key": "Client",
+                        "Value": {"Ref": "ClientName"}
+                    },
+                    {
+                        "Key": "DeploymentType",
+                        "Value": {"Ref": "DeploymentType"}
+                    },
+                    {
+                        "Key": "Environment",
+                        "Value": "prod"
+                    }
+                ]                 
+            }
+        },
+        "SolutionAnonymousMetric": {
+            "Type": "Custom::LoadLambda",
+            "Condition": "AnonymousUsageMetrics",
+            "Properties": {
+                "ServiceToken": {
+                    "Fn::GetAtt": [
+                        "CustomResourceHelper",
+                        "Arn"
+                    ]
+                },
+                "Region": [
+                    {
+                        "Ref": "AWS::Region"
+                    }
+                ],
+                "solutionId": {
+                    "Fn::FindInMap": [
+                        "FunctionMap",
+                        "Configuration",
+                        "SolutionID"
+                    ]
+                },
+                "UUID": {
+                    "Fn::GetAtt": [
+                        "SolutionUuid",
+                        "UUID"
+                    ]
+                },
+                "version": "1",
+                "anonymousData": {
+                    "Ref": "allowAnonymousUsageMetrics"
+                },
+                "customAction": "sendMetric"
+            }
+        },
+        "SolutionUuid": {
+            "Type": "Custom::LoadLambda",
+            "Properties": {
+                "ServiceToken": {
+                    "Fn::GetAtt": [
+                        "CustomResourceHelper",
+                        "Arn"
+                    ]
+                },
+                "Region": [
+                    {
+                        "Ref": "AWS::Region"
+                    }
+                ],
+                "customAction": "createUuid"
+            }
+        }
+    },
+    "Outputs": {
+        "StartChatLambda": {
+            "Description": "The ARN of the Lambda function created to initiate chat",
+            "Value": {
+                "Fn::GetAtt": [
+                    "StartChatLambda",
+                    "Arn"
+                ]
+            }
+        },
+        "ApiGatewayEndoint": {
+            "Description": "The ARN of the API Gateway endpoint that triggers the Lambda function to initiate the chat",
+            "Value": {
+                "Ref": "ApiGatewayRestAPI"
+            }
+        },
+        "StartChatLambdaExecutionRole": {
+            "Description": "The ARN of the IAM role used by the Lambda function to initiate the chat",
+            "Value": {
+                "Fn::GetAtt": [
+                    "StartChatLambdaExecutionRole",
+                    "Arn"
+                ]
+            }
+        }
+    }    
+}
