@@ -15,9 +15,9 @@
         }
     },
     "Parameters": {
-        "Client": {
+        "ClientName": {
             "Type": "String",
-            "Default": "LiverPool",
+            "Default": "SSCLConnect",
             "Description": "Enter client name. It will be used as a Tag"
 
         },
@@ -41,7 +41,8 @@
         "S3BucketName": {
             "Type": "String",
             "Default": "start-chat-contact-api-cfn",
-            "Description": "Enter the S3 Bucket Name for SDK Layer"
+            "Description": "The name for the S3 bucket - must be unique across all of AWS (3-63 lowercase letters or numbers)",
+			"ConstraintDescription": "3-63 characters; must contain only lowercase letters or numbers"
 
         },
         "NodejsRruntimes": {
@@ -97,11 +98,7 @@
         "ChatSDKLayer": {
             "Type": "AWS::Lambda::LayerVersion",
             "Properties": {
-                "CompatibleRuntimes": [
-                    {
-                        "Ref": "NodejsRruntimes"
-                    }
-                ],
+                "CompatibleRuntimes": "Ref": "NodejsRruntimes",
                 "Content": {
                     "S3Bucket": {
                         "Fn::Join": [
@@ -137,14 +134,14 @@
                     }
                 },
                 "Description": "The AWS SDK including Amazon Connect Chat APIs.",
-                "LayerName": { "Fn::Join" : [ "_", [ "ADOP-F", "!Sub '${AWS::StackName}'" , "ChatSDKLayer" ] ] }                
+                "LayerName": {"Fn::Sub": "${AWS::StackName}-ChatSDKLayer"}                
             }
         },
         "StartChatLambda": {
             "Type": "AWS::Lambda::Function",
             "Properties": {
                 "Description": "AWS Lambda Function to initiate the chat with the end user",
-                "FunctionName": { "Fn::Join" : [ "_", [ "ADOP-F", "!Sub '${AWS::StackName}'" , "StartChatLambda" ] ] }, 
+                "FunctionName": { "Fn::Sub": "${AWS::StackName}-StartChatLambda" }, 
                 "Handler": "startChatContact.handler",
                 "Role": {
                     "Fn::GetAtt": [
@@ -233,7 +230,7 @@
                     ]
                 },
                 "Path": "/",
-                "RoleName": { "Fn::Join" : [ "_", [ "ADOP-F", "!Sub '${AWS::StackName}'" , "StartChatLambdaExecutionRole" ] ] }, 
+                "RoleName": { "Fn::Sub": "${AWS::StackName}-StartChatLambdaExecutionRole"}, 
                 "Policies": [
                     {
                         "PolicyName": "start-chat-contact-execution-policy",
@@ -295,7 +292,7 @@
         "ApiGatewayRestAPI": {
             "Type": "AWS::ApiGateway::RestApi",
             "Properties": {
-                "Name": { "Fn::Join" : [ "_", [ "ADOP-F", "!Sub '${AWS::StackName}'" , "StartChatLambda" ] ] }, 
+                "Name": { "Fn::Sub": "${AWS::StackName}-ApiGatewayRestAPI"}, 
                 "Description": "API to initiate chat with Amazon Connect"
             }
         },
@@ -336,7 +333,7 @@
             "DependsOn": "LambdaApiGatewayInvokePermission",
             "Properties": {
                 "AuthorizationType": "NONE",
-                "OperationName": { "Fn::Join" : [ "_", [ "ADOP-F", "!Sub '${AWS::StackName}'" , "ApiGatewayRootMethod" ] ] }, 
+                "OperationName": { "Fn::Sub": "${AWS::StackName}-ApiGatewayRootMethod" }, 
                 "HttpMethod": "POST",
                 "Integration": {
                     "IntegrationHttpMethod": "POST",
@@ -400,7 +397,7 @@
                     "Ref": "ApiGatewayRestAPI"
                 },
                 "AuthorizationType": "NONE",
-                "OperationName": { "Fn::Join" : [ "_", [ "ADOP-F", "!Sub '${AWS::StackName}'" , "ApiGatewayOptionsMethod" ] ] },
+                "OperationName": { "Fn::Sub": "${AWS::StackName}-ApiGatewayOptionsMethod"},
                 "HttpMethod": "OPTIONS",
                 "Integration": {
                     "Type": "MOCK",
